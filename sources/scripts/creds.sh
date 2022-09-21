@@ -38,6 +38,7 @@ function main {
   CT_MGMT_ACCOUNT=$(aws ssm get-parameter --name 	/aft/account/ct-management/account-id | jq --raw-output ".Parameter.Value")
   AUDIT_ACCOUNT=$(aws ssm get-parameter --name 	/aft/account/audit/account-id | jq --raw-output ".Parameter.Value")
   LOG_ARCHIVE_ACCOUNT=$(aws ssm get-parameter --name 	/aft/account/log-archive/account-id | jq --raw-output ".Parameter.Value")
+  AWS_PARTITION=$(aws ssm get-parameter --name 	/aft/account/aws_partition | jq --raw-output ".Parameter.Value")
 
   # Assume aws-aft-Administrator Role in AFT Management account. This is a Hub role which has permissions to assume other AFT roles
   echo "Generating credentials for ${AFT_MGMT_ROLE} in aft-management account: ${AFT_MGMT_ACCOUNT}"
