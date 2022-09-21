@@ -45,12 +45,8 @@ variable "aft_framework_repo_url" {
 
 variable "aft_framework_repo_git_ref" {
   description = "Git branch from which the AFT framework should be sourced from"
-  default     = "main"
+  default     = null
   type        = string
-  validation {
-    condition     = length(var.aft_framework_repo_git_ref) > 0
-    error_message = "Variable var: aft_framework_repo_git_ref cannot be empty."
-  }
 }
 
 variable "aft_management_account_id" {
@@ -98,6 +94,19 @@ variable "aft_vpc_endpoints" {
   validation {
     condition     = contains([true, false], var.aft_vpc_endpoints)
     error_message = "Valid values for var: aft_vpc_endpoints are (true, false)."
+  }
+}
+
+variable "global_codebuild_timeout" {
+  type        = number
+  description = "Codebuild build timeout"
+  default     = 60
+  validation {
+    condition = (
+      var.global_codebuild_timeout >= 5 &&
+      var.global_codebuild_timeout <= 480
+    )
+    error_message = "Codebuild build timeout must be between 5 and 480 minutes."
   }
 }
 
@@ -351,5 +360,19 @@ variable "aft_vpc_public_subnet_02_cidr" {
   validation {
     condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}(\\/([0-9]|[1-2][0-9]|3[0-2]))?$", var.aft_vpc_public_subnet_02_cidr))
     error_message = "Variable var: aft_vpc_public_subnet_02_cidr value must be a valid network CIDR, x.x.x.x/y."
+  }
+}
+
+#########################################
+# AFT Metrics Reporting Variables
+#########################################
+
+variable "aft_metrics_reporting" {
+  description = "Flag toggling reporting of operational metrics"
+  type        = bool
+  default     = true
+  validation {
+    condition     = contains([true, false], var.aft_metrics_reporting)
+    error_message = "Valid values for var: aft_metrics_reporting are (true, false)."
   }
 }

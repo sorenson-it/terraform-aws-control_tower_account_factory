@@ -271,6 +271,8 @@ resource "aws_ssm_parameter" "aft_framework_repo_git_ref" {
   value = var.aft_framework_repo_git_ref
 }
 
+
+
 resource "aws_ssm_parameter" "aft_feature_cloudtrail_data_events" {
   name  = "/aft/config/feature/cloudtrail-data-events-enabled"
   type  = "String"
@@ -364,5 +366,20 @@ resource "aws_ssm_parameter" "aft_log_key_arn" {
 resource "aws_ssm_parameter" "aft_maximum_concurrent_customizations" {
   name  = "/aft/config/customizations/maximum_concurrent_customizations"
   value = var.maximum_concurrent_customizations
+  type  = "String"
+}
+
+resource "aws_ssm_parameter" "aft_metrics_reporting" {
+  name  = "/aft/config/metrics-reporting"
+  value = var.aft_metrics_reporting
+  type  = "String"
+}
+
+resource "random_uuid" "metrics_reporting_uuid" {
+}
+
+resource "aws_ssm_parameter" "aft_metrics_reporting_uuid" {
+  name  = "/aft/config/metrics-reporting-uuid"
+  value = random_uuid.metrics_reporting_uuid.result
   type  = "String"
 }

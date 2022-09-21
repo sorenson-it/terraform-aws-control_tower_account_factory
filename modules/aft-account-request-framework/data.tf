@@ -1,6 +1,8 @@
 # Copyright Amazon.com, Inc. or its affiliates. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
+data "aws_partition" "current" {}
+
 data "aws_region" "aft-management" {}
 
 data "aws_caller_identity" "aft-management" {}
@@ -31,8 +33,11 @@ data "aws_vpc_endpoint_service" "codebuild" {
   service = "codebuild"
 }
 
-data "aws_subnet_ids" "codebuild" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "codebuild" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -51,8 +56,11 @@ data "aws_vpc_endpoint_service" "codecommit" {
   service = "codecommit"
 }
 
-data "aws_subnet_ids" "codecommit" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "codecommit" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -71,8 +79,12 @@ data "aws_vpc_endpoint_service" "git-codecommit" {
   service = "git-codecommit"
 }
 
-data "aws_subnet_ids" "git-codecommit" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "git-codecommit" {
+
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -91,8 +103,12 @@ data "aws_vpc_endpoint_service" "codepipeline" {
   service = "codepipeline"
 }
 
-data "aws_subnet_ids" "codepipeline" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "codepipeline" {
+
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -111,8 +127,11 @@ data "aws_vpc_endpoint_service" "servicecatalog" {
   service = "servicecatalog"
 }
 
-data "aws_subnet_ids" "servicecatalog" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "servicecatalog" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -131,9 +150,11 @@ data "aws_vpc_endpoint_service" "lambda" {
   service = "lambda"
 }
 
-data "aws_subnet_ids" "lambda" {
-  vpc_id = aws_vpc.aft_vpc.id
-
+data "aws_subnets" "lambda" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
   filter {
     name   = "subnet-id"
     values = [aws_subnet.aft_vpc_private_subnet_01.id, aws_subnet.aft_vpc_private_subnet_02.id]
@@ -151,8 +172,11 @@ data "aws_vpc_endpoint_service" "kms" {
   service = "kms"
 }
 
-data "aws_subnet_ids" "kms" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "kms" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -171,9 +195,12 @@ data "aws_vpc_endpoint_service" "logs" {
   service = "logs"
 }
 
-data "aws_subnet_ids" "logs" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "logs" {
 
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
   filter {
     name   = "subnet-id"
     values = [aws_subnet.aft_vpc_private_subnet_01.id, aws_subnet.aft_vpc_private_subnet_02.id]
@@ -191,8 +218,11 @@ data "aws_vpc_endpoint_service" "events" {
   service = "events"
 }
 
-data "aws_subnet_ids" "events" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "events" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -211,9 +241,11 @@ data "aws_vpc_endpoint_service" "states" {
   service = "states"
 }
 
-data "aws_subnet_ids" "states" {
-  vpc_id = aws_vpc.aft_vpc.id
-
+data "aws_subnets" "states" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
   filter {
     name   = "subnet-id"
     values = [aws_subnet.aft_vpc_private_subnet_01.id, aws_subnet.aft_vpc_private_subnet_02.id]
@@ -231,8 +263,12 @@ data "aws_vpc_endpoint_service" "ssm" {
   service = "ssm"
 }
 
-data "aws_subnet_ids" "ssm" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "ssm" {
+
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -251,8 +287,11 @@ data "aws_vpc_endpoint_service" "sns" {
   service = "sns"
 }
 
-data "aws_subnet_ids" "sns" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "sns" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -271,8 +310,11 @@ data "aws_vpc_endpoint_service" "sqs" {
   service = "sqs"
 }
 
-data "aws_subnet_ids" "sqs" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "sqs" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"
@@ -291,8 +333,11 @@ data "aws_vpc_endpoint_service" "sts" {
   service = "sts"
 }
 
-data "aws_subnet_ids" "sts" {
-  vpc_id = aws_vpc.aft_vpc.id
+data "aws_subnets" "sts" {
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.aft_vpc.id]
+  }
 
   filter {
     name   = "subnet-id"

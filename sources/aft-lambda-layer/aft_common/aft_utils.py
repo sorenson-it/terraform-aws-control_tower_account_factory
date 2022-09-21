@@ -17,30 +17,34 @@ from typing import (
     cast,
 )
 
-import attr
 import boto3
 from boto3.dynamodb.types import TypeDeserializer
 from boto3.session import Session
 from botocore.response import StreamingBody
 
 if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.type_defs import (
+        AttributeValueTypeDef,
+        PutItemOutputTableTypeDef,
+    )
     from mypy_boto3_lambda import LambdaClient
     from mypy_boto3_lambda.type_defs import InvocationResponseTypeDef
-    from mypy_boto3_organizations import OrganizationsClient
-    from mypy_boto3_organizations.type_defs import TagTypeDef
+    from mypy_boto3_organizations import ListAccountsPaginator, OrganizationsClient
+    from mypy_boto3_organizations.type_defs import (
+        DescribeAccountResponseTypeDef,
+        TagTypeDef,
+    )
     from mypy_boto3_servicecatalog import ServiceCatalogClient
-    from mypy_boto3_sns import SNSClient
-    from mypy_boto3_sns.type_defs import PublishResponseTypeDef
     from mypy_boto3_sqs import SQSClient
     from mypy_boto3_sqs.type_defs import MessageTypeDef, SendMessageResultTypeDef
     from mypy_boto3_stepfunctions import SFNClient
     from mypy_boto3_stepfunctions.type_defs import StartExecutionOutputTypeDef
     from mypy_boto3_sts import STSClient
-    from mypy_boto3_sts.type_defs import (
-        AssumeRoleRequestRequestTypeDef,
-        CredentialsTypeDef,
-    )
 else:
+    AttributeValueTypeDef = object
+    ListAccountsPaginator = object
+    PutItemOutputTableTypeDef = object
+    AttributeValueTypeDef = object
     LambdaClient = object
     InvocationResponseTypeDef = object
     OrganizationsClient = object
@@ -53,10 +57,13 @@ else:
     SendMessageResultTypeDef = object
     SFNClient = object
     StartExecutionOutputTypeDef = object
-    STSClient = object
     CredentialsTypeDef = object
+    LambdaContext = object
+    DescribeAccountResponseTypeDef = object
+    STSClient = object
 
-from aft_common.types import AftAccountInfo
+
+from aft_common.aft_types import AftAccountInfo
 
 from .logger import Logger
 
@@ -122,6 +129,12 @@ SSM_PARAM_ACCOUNT_AUDIT_ACCOUNT_ID = "/aft/account/audit/account-id"
 SSM_PARAM_ACCOUNT_LOG_ARCHIVE_ACCOUNT_ID = "/aft/account/log-archive/account-id"
 SSM_PARAM_ACCOUNT_AFT_MANAGEMENT_ACCOUNT_ID = "/aft/account/aft-management/account-id"
 
+SSM_PARAM_ACCOUNT_AFT_VERSION = "/aft/config/aft/version"
+SSM_PARAM_ACCOUNT_TERRAFORM_VERSION = "/aft/config/terraform/version"
+
+SSM_PARAM_AFT_METRICS_REPORTING = "/aft/config/metrics-reporting"
+SSM_PARAM_AFT_METRICS_REPORTING_UUID = "/aft/config/metrics-reporting-uuid"
+
 
 # INIT
 def get_logger() -> Logger:
@@ -133,7 +146,6 @@ def get_logger() -> Logger:
         log_level = "info"
     logger = Logger(loglevel=log_level)
     logger.info("Logger started.")
-    logger.info(str(os.environ))
     return logger
 
 
@@ -152,43 +164,23 @@ def get_ssm_parameter_value(session: Session, param: str, decrypt: bool = False)
 
 def put_ddb_item(
     session: Session, table_name: str, item: Dict[str, str]
-) -> Dict[str, Any]:
+) -> PutItemOutputTableTypeDef:
     dynamodb = session.resource("dynamodb")
     table = dynamodb.Table(table_name)
-
     logger.info("Inserting item into " + table_name + " table: " + str(item))
-
-    response: Dict[str, Any] = table.put_item(Item=item)
-
+    response = table.put_item(Item=item)
     logger.info(response)
-
     return response
 
 
 def get_account_id_from_email(ct_management_session: Session, email: str) -> str:
-    logger.info("begin get_account_by_email")
-    accounts = list_accounts(ct_management_session)
-    account = [a for a in accounts if a["email"] == email]
-    logger.info(account)
-    if len(account):
-        return account[0]["id"]
-    else:
-        raise Exception("Account not found for email")
-
-
-def list_accounts(ct_management_session: Session) -> List[AftAccountInfo]:
-    client: OrganizationsClient = ct_management_session.client("organizations")
-    response = client.list_accounts()
-    accounts = response["Accounts"]
-    account_info: List[AftAccountInfo] = []
-    while "NextToken" in response:
-        response = client.list_accounts(NextToken=response["NextToken"])
-        accounts.extend(response["Accounts"])
-
-    for a in accounts:
-        account_info.append(get_account_info(ct_management_session, a["Id"]))
-
-    return account_info
+    orgs = ct_management_session.client("organizations")
+    paginator: ListAccountsPaginator = orgs.get_paginator("list_accounts")
+    for page in paginator.paginate():
+        for account in page["Accounts"]:
+            if account["Email"] == email:
+                return account["Id"]
+    raise Exception(f"Account email {email} not found in Organization")
 
 
 def get_account_info(ct_management_session: Session, account_id: str) -> AftAccountInfo:
@@ -202,13 +194,6 @@ def get_account_info(ct_management_session: Session, account_id: str) -> AftAcco
     parents = list_response["Parents"]
     parent_id = parents[0]["Id"]
     parent_type = parents[0]["Type"]
-    org_name = ""
-
-    if parent_type == "ORGANIZATIONAL_UNIT":
-        org_details = client.describe_organizational_unit(
-            OrganizationalUnitId=parent_id
-        )
-        org_name = org_details["OrganizationalUnit"]["Name"]
 
     return AftAccountInfo(
         id=account["Id"],
@@ -219,129 +204,9 @@ def get_account_info(ct_management_session: Session, account_id: str) -> AftAcco
         status=account["Status"],
         parent_id=parent_id,
         parent_type=parent_type,
-        org_name=org_name,
         type="account",
         vendor="aws",
     )
-
-
-def get_assume_role_credentials(
-    session: Session,
-    role_arn: str,
-    session_name: str,
-    external_id: Optional[str] = None,
-    session_duration: int = 900,
-    session_policy: Optional[str] = None,
-) -> CredentialsTypeDef:
-    client: STSClient = session.client("sts")
-
-    assume_role_params: AssumeRoleRequestRequestTypeDef = {
-        "RoleArn": role_arn,
-        "RoleSessionName": session_name,
-        "DurationSeconds": session_duration,
-    }
-
-    if external_id:
-        assume_role_params.update({"ExternalId": external_id})
-
-    if session_policy:
-        assume_role_params.update({"Policy": session_policy})
-
-    assume_role_response = client.assume_role(**assume_role_params)
-
-    credentials = assume_role_response["Credentials"]
-    return credentials
-
-
-def build_role_arn(
-    session: Session, role_name: str, account_id: Optional[str] = None
-) -> str:
-    account_info = get_session_info(session)
-    role_arn: str
-    if not account_id:
-        role_arn = "arn:aws:iam::" + account_info["account"] + ":role/" + role_name
-        return role_arn
-    else:
-        role_arn = "arn:aws:iam::" + account_id + ":role/" + role_name
-        return role_arn
-
-
-def get_session_info(session: Session) -> Dict[str, str]:
-    client: STSClient = session.client("sts")
-    response = client.get_caller_identity()
-
-    account_info = {"region": session.region_name, "account": response["Account"]}
-
-    return account_info
-
-
-def get_boto_session(credentials: CredentialsTypeDef) -> Session:
-    return boto3.session.Session(
-        aws_access_key_id=credentials["AccessKeyId"],
-        aws_secret_access_key=credentials["SecretAccessKey"],
-        aws_session_token=credentials["SessionToken"],
-    )
-
-
-def get_ct_management_session(aft_mgmt_session: Session) -> Session:
-    ct_mgmt_account = get_ssm_parameter_value(
-        aft_mgmt_session, SSM_PARAM_ACCOUNT_CT_MANAGEMENT_ACCOUNT_ID
-    )
-    administrator_role = get_ssm_parameter_value(
-        aft_mgmt_session, SSM_PARAM_AFT_ADMIN_ROLE
-    )
-    execution_role = get_ssm_parameter_value(aft_mgmt_session, SSM_PARAM_AFT_EXEC_ROLE)
-    session_name = get_ssm_parameter_value(aft_mgmt_session, SSM_PARAM_AFT_SESSION_NAME)
-
-    # Assume aws-aft-AdministratorRole locally
-    local_creds = get_assume_role_credentials(
-        aft_mgmt_session,
-        build_role_arn(aft_mgmt_session, administrator_role),
-        session_name,
-    )
-    local_assumed_session = get_boto_session(local_creds)
-    # Assume AWSAFTExecutionRole in CT management
-    ct_mgmt_creds = get_assume_role_credentials(
-        local_assumed_session,
-        build_role_arn(aft_mgmt_session, execution_role, ct_mgmt_account),
-        session_name,
-    )
-    return get_boto_session(ct_mgmt_creds)
-
-
-def get_aft_admin_role_session(session: Session) -> Session:
-    administrator_role = get_ssm_parameter_value(session, SSM_PARAM_AFT_ADMIN_ROLE)
-    execution_role = get_ssm_parameter_value(session, SSM_PARAM_AFT_EXEC_ROLE)
-    session_name = get_ssm_parameter_value(session, SSM_PARAM_AFT_SESSION_NAME)
-
-    # Assume aws-aft-AdministratorRole locally
-    local_creds = get_assume_role_credentials(
-        session, build_role_arn(session, administrator_role), session_name
-    )
-
-    return get_boto_session(local_creds)
-
-
-def get_log_archive_session(session: Session) -> Session:
-    log_archive_account = get_ssm_parameter_value(
-        session, SSM_PARAM_ACCOUNT_LOG_ARCHIVE_ACCOUNT_ID
-    )
-    administrator_role = get_ssm_parameter_value(session, SSM_PARAM_AFT_ADMIN_ROLE)
-    execution_role = get_ssm_parameter_value(session, SSM_PARAM_AFT_EXEC_ROLE)
-    session_name = get_ssm_parameter_value(session, SSM_PARAM_AFT_SESSION_NAME)
-
-    # Assume aws-aft-AdministratorRole locally
-    local_creds = get_assume_role_credentials(
-        session, build_role_arn(session, administrator_role), session_name
-    )
-    local_assumed_session = get_boto_session(local_creds)
-    # Assume AWSAFTExecutionRole in CT management
-    log_archive_creds = get_assume_role_credentials(
-        local_assumed_session,
-        build_role_arn(session, execution_role, log_archive_account),
-        session_name,
-    )
-    return get_boto_session(log_archive_creds)
 
 
 def get_ct_product_id(session: Session, ct_management_session: Session) -> str:
@@ -396,35 +261,6 @@ def ct_provisioning_artifact_is_active(
         return False
 
 
-def product_provisioning_in_progress(
-    ct_management_session: Session, product_id: str
-) -> bool:
-    client: ServiceCatalogClient = ct_management_session.client("servicecatalog")
-
-    logger.info("Checking for product provisioning in progress")
-
-    response = client.scan_provisioned_products(
-        AccessLevelFilter={"Key": "Account", "Value": "self"},
-    )
-    pps = response["ProvisionedProducts"]
-    while "NextPageToken" in response:
-        response = client.scan_provisioned_products(
-            AccessLevelFilter={"Key": "Account", "Value": "self"},
-            PageToken=response["NextPageToken"],
-        )
-        pps.extend(response["ProvisionedProducts"])
-
-    for p in pps:
-        if p["ProductId"] == product_id:
-            logger.info("Identified CT Product - " + p["Id"])
-            if p["Status"] in ["UNDER_CHANGE", "PLAN_IN_PROGRESS"]:
-                logger.info("Product provisioning in Progress")
-                return True
-
-    logger.info("No product provisioning in Progress")
-    return False
-
-
 def build_sqs_url(session: Session, queue_name: str) -> str:
     account_info = get_session_info(session)
     url = (
@@ -456,18 +292,6 @@ def receive_sqs_message(session: Session, sqs_queue: str) -> Optional[MessageTyp
     else:
         logger.info("There are no messages pending processing")
         return None
-
-
-def get_org_account_emails(ct_management_session: Session) -> List[str]:
-    accounts = list_accounts(ct_management_session)
-
-    return [a["email"] for a in accounts]
-
-
-def get_org_account_names(ct_management_session: Session) -> List[str]:
-    accounts = list_accounts(ct_management_session)
-
-    return [a["name"] for a in accounts]
 
 
 def get_org_ou_names(session: Session) -> List[str]:
@@ -515,10 +339,7 @@ def delete_sqs_message(session: Session, message: MessageTypeDef) -> None:
 
 
 def unmarshal_ddb_item(
-    low_level_data: Dict[
-        str,
-        Dict[Literal["S", "N", "B", "SS", "NS", "BS", "NULL", "BOOL", "M", "L"], Any],
-    ]
+    low_level_data: Dict[str, AttributeValueTypeDef]
 ) -> Dict[str, Any]:
     # To go from low-level format to python
 
@@ -566,20 +387,15 @@ def invoke_lambda(
 
 
 def get_account_email_from_id(ct_management_session: Session, id: str) -> str:
-    accounts = list_accounts(ct_management_session)
-    logger.info("Getting account email for account id " + id)
-    for a in accounts:
-        if a["id"] == id:
-            email = a["email"]
-            logger.info("Account email: " + email)
-            return email
-    raise Exception("Account ID " + id + " was not found in the Organization")
+    orgs = ct_management_session.client("organizations")
+    response: DescribeAccountResponseTypeDef = orgs.describe_account(AccountId=id)
+    return response["Account"]["Email"]
 
 
 def build_sfn_arn(session: Session, sfn_name: str) -> str:
     account_info = get_session_info(session)
     sfn_arn = (
-        "arn:aws:states:"
+        f"arn:{get_aws_partition(session)}:states:"
         + account_info["region"]
         + ":"
         + account_info["account"]
@@ -621,19 +437,6 @@ def is_aft_supported_controltower_event(event: Dict[str, Any]) -> bool:
         return False
 
 
-def send_sns_message(
-    session: Session, topic: str, sns_message: str, subject: str
-) -> PublishResponseTypeDef:
-    logger.info("Sending SNS Message")
-    client: SNSClient = session.client("sns")
-
-    response = client.publish(TopicArn=topic, Message=sns_message, Subject=subject)
-
-    logger.info(response)
-
-    return response
-
-
 def tag_org_resource(
     ct_management_session: Session,
     resource: str,
@@ -658,10 +461,9 @@ def get_all_aft_account_ids(session: Session) -> List[str]:
     table = dynamodb.Table(table_name)
     logger.info("Scanning DynamoDB table: " + table_name)
 
-    items: List[Dict[str, str]] = []
+    items: List[Dict[str, Any]] = []
     response = table.scan(ProjectionExpression="id", ConsistentRead=True)
     items.extend(response["Items"])
-
     while "LastEvaluatedKey" in response:
         logger.debug(
             "Paginated response found, continuing at {}".format(
@@ -781,3 +583,20 @@ def get_accounts_by_tags(
         return matched_accounts
     else:
         return None
+
+
+def get_session_info(session: Session) -> Dict[str, str]:
+    client: STSClient = session.client("sts")
+    response = client.get_caller_identity()
+
+    account_info = {"region": session.region_name, "account": response["Account"]}
+
+    return account_info
+
+
+def get_aws_partition(session: Session, region: Optional[str] = None) -> str:
+    if region is None:
+        region = session.region_name
+
+    partition = session.get_partition_for_region(region)  # type: ignore
+    return cast(str, partition)
