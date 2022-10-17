@@ -84,6 +84,7 @@ module "aft_code_repositories" {
   account_customizations_repo_branch              = var.account_customizations_repo_branch
   global_customizations_repo_branch               = var.global_customizations_repo_branch
   log_group_retention                             = var.cloudwatch_log_group_retention
+  global_codebuild_timeout                        = var.global_codebuild_timeout
 }
 
 module "aft_customizations" {
@@ -117,6 +118,7 @@ module "aft_customizations" {
   maximum_concurrent_customizations                 = var.maximum_concurrent_customizations
   customizations_archive_path                       = module.packaging.customizations_archive_path
   customizations_archive_hash                       = module.packaging.customizations_archive_hash
+  global_codebuild_timeout                          = var.global_codebuild_timeout
 }
 
 module "aft_feature_options" {
@@ -226,7 +228,7 @@ module "aft_ssm_parameters" {
   aft_config_backend_primary_region                           = var.ct_home_region
   aft_config_backend_secondary_region                         = var.tf_backend_secondary_region
   aft_framework_repo_url                                      = var.aft_framework_repo_url
-  aft_framework_repo_git_ref                                  = var.aft_framework_repo_git_ref
+  aft_framework_repo_git_ref                                  = local.aft_framework_repo_git_ref
   terraform_token                                             = var.terraform_token
   terraform_version                                           = var.terraform_version
   terraform_org_name                                          = var.terraform_org_name
@@ -241,4 +243,5 @@ module "aft_ssm_parameters" {
   account_provisioning_customizations_repo_branch             = var.account_provisioning_customizations_repo_branch
   maximum_concurrent_customizations                           = var.maximum_concurrent_customizations
   github_enterprise_url                                       = var.github_enterprise_url
+  aft_metrics_reporting                                       = var.aft_metrics_reporting
 }

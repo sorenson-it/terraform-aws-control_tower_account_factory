@@ -4,18 +4,22 @@
 import json
 import os
 import time
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Dict, List, Sequence
 
 import aft_common.aft_utils as utils
 import jsonschema
-from aft_common.types import AftAccountInfo
+from aft_common.aft_types import AftAccountInfo
+from aft_common.auth import AuthClient
 from boto3.session import Session
+from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.type_defs import PutItemOutputTableTypeDef
     from mypy_boto3_iam import IAMClient, IAMServiceResource
-    from mypy_boto3_iam.type_defs import CreateRoleResponseTypeDef
     from mypy_boto3_organizations.type_defs import TagTypeDef
 else:
+    PutItemOutputTableTypeDef = object
     IAMClient = object
     CreateRoleResponseTypeDef = object
     IAMServiceResource = object
@@ -25,122 +29,201 @@ else:
 logger = utils.get_logger()
 
 
-def get_ct_execution_session(
-    aft_management_session: Session, ct_management_session: Session, account_id: str
-) -> Session:
-    session_name = utils.get_ssm_parameter_value(
-        aft_management_session, utils.SSM_PARAM_AFT_SESSION_NAME
-    )
-    admin_credentials = utils.get_assume_role_credentials(
-        ct_management_session,
-        utils.build_role_arn(
-            ct_management_session, "AWSControlTowerExecution", account_id
-        ),
-        session_name,
-    )
+AFT_EXEC_ROLE = "AWSAFTExecution"
 
-    return utils.get_boto_session(admin_credentials)
+SSM_PARAMETER_PATH = "/aft/account-request/custom-fields/"
 
 
-def create_aft_execution_role(
-    account_info: Dict[str, Any], session: Session, ct_management_session: Session
-) -> str:
-    logger.info("Function Start - create_aft_execution_role")
-    role_name = utils.get_ssm_parameter_value(session, utils.SSM_PARAM_AFT_EXEC_ROLE)
-    ct_execution_session = get_ct_execution_session(
-        session, ct_management_session, account_info["id"]
-    )
-    exec_iam_client = ct_execution_session.client("iam")
+class ProvisionRoles:
 
-    role_name = role_name.split("/")[-1]
+    SERVICE_ROLE_NAME = "AWSAFTService"
 
-    try:
-        role = exec_iam_client.get_role(RoleName=role_name)
-        logger.info("Role Exists. Updating...")
-        update_aft_role_trust_policy(session, ct_execution_session, role_name)
-        set_role_policy(
-            ct_execution_session=ct_execution_session,
-            role_name=role_name,
-            policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+    def __init__(self, auth: AuthClient, account_id: str) -> None:
+        self.auth = auth
+        self.target_account_id = account_id
+
+        temp_session = self.auth.get_ct_management_session()
+        self.partition = utils.get_aws_partition(temp_session)
+
+        self.ADMINISTRATOR_ACCESS_MANAGED_POLICY_ARN = (
+            f"arn:{self.partition}:iam::aws:policy/AdministratorAccess"
         )
-        return role["Role"]["Arn"]
-    except exec_iam_client.exceptions.NoSuchEntityException:
-        logger.info("Role not found in account. Creating...")
-        return create_role_in_account(session, ct_execution_session, role_name)
 
+    def generate_aft_trust_policy(self) -> str:
+        return json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "AWS": f"arn:{self.partition}:iam::{self.auth.aft_management_account_id}:assumed-role/AWSAFTAdmin/AWSAFT-Session"
+                        },
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
 
-def update_aft_role_trust_policy(
-    session: Session, ct_execution_session: Session, role_name: str
-) -> None:
-    assume_role_policy_document = get_aft_trust_policy_document(session)
-    iam_resource: IAMServiceResource = ct_execution_session.resource("iam")
-    role = iam_resource.Role(name=role_name)
-    role.AssumeRolePolicy().update(PolicyDocument=assume_role_policy_document)
+    def _deploy_role_in_target_account(
+        self, role_name: str, trust_policy: str, policy_arn: str
+    ) -> None:
+        """
+        Since we're creating the AFT roles in the account, we must assume
+        AWSControlTowerExecution as the target role. Since this role only
+        trusts federation from the CT Management account, we pass a hub session
+        that has already been federated into the CT Management account
+        """
+        ct_mgmt_session = self.auth.get_ct_management_session(
+            role_name=ProvisionRoles.SERVICE_ROLE_NAME
+        )
+        ct_mgmt_acc_id = ct_mgmt_session.client("sts").get_caller_identity()["Account"]
+        if self.target_account_id == ct_mgmt_acc_id:
+            target_account_session = ct_mgmt_session
+        else:
+            target_account_session = self.auth.get_target_account_session(
+                account_id=self.target_account_id,
+                hub_session=ct_mgmt_session,
+                role_name=AuthClient.CONTROL_TOWER_EXECUTION_ROLE_NAME,
+            )
+        self._put_role(
+            target_account_session=target_account_session,
+            role_name=role_name,
+            trust_policy=trust_policy,
+        )
+        self._put_policy_on_role(
+            target_account_session=target_account_session,
+            role_name=role_name,
+            policy_arn=policy_arn,
+        )
 
+    def _put_role(
+        self,
+        target_account_session: Session,
+        role_name: str,
+        trust_policy: str,
+        max_attempts: int = 20,
+        delay: int = 5,
+    ) -> None:
+        client: IAMClient = target_account_session.client("iam")
+        if self.role_exists(
+            role_name=role_name, target_account_session=target_account_session
+        ):
+            client.update_assume_role_policy(
+                RoleName=role_name, PolicyDocument=trust_policy
+            )
+        else:
+            client.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=trust_policy,
+                Description="Role for use with Account Factory for Terraform",
+                MaxSessionDuration=3600,
+                Tags=[{"Key": "managed_by", "Value": "AFT"}],
+            )
+            waiter = client.get_waiter("role_exists")
+            waiter.wait(
+                RoleName=role_name,
+                WaiterConfig={"Delay": delay, "MaxAttempts": max_attempts},
+            )
 
-def get_aft_trust_policy_document(session: Session) -> str:
-    trust_policy_template = os.path.join(
-        os.path.dirname(__file__), "templates/aftmanagement.tpl"
-    )
-    aft_management_account = utils.get_ssm_parameter_value(
-        session, utils.SSM_PARAM_ACCOUNT_AFT_MANAGEMENT_ACCOUNT_ID
-    )
-    with open(trust_policy_template) as trust_policy_file:
-        template = trust_policy_file.read()
-        template = template.replace("{AftManagementAccount}", aft_management_account)
-        return template
+    @staticmethod
+    def role_exists(role_name: str, target_account_session: Session) -> bool:
+        client: IAMClient = target_account_session.client("iam")
+        try:
+            client.get_role(RoleName=role_name)
+            return True
 
+        except ClientError as error:
+            if error.response["Error"]["Code"] == "NoSuchEntity":
+                return False
+            raise
 
-def create_role_in_account(
-    session: Session,
-    ct_execution_session: Session,
-    role_name: str,
-) -> str:
-    logger.info("Function Start - create_role_in_account")
-    assume_role_policy_document = get_aft_trust_policy_document(session=session)
-    exec_client: IAMClient = ct_execution_session.client("iam")
-    logger.info("Creating Role")
-    response: CreateRoleResponseTypeDef = exec_client.create_role(
-        RoleName=role_name.split("/")[-1],
-        AssumeRolePolicyDocument=assume_role_policy_document,
-        Description="AFT Execution Role",
-        MaxSessionDuration=3600,
-        Tags=[
-            {"Key": "managed_by", "Value": "AFT"},
-        ],
-    )
-    role_arn = response["Role"]["Arn"]
-    logger.info(response)
-    set_role_policy(
-        ct_execution_session=ct_execution_session,
-        role_name=role_name,
-        policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
-    )
+    def _put_policy_on_role(
+        self,
+        target_account_session: Session,
+        role_name: str,
+        policy_arn: str,
+        delay: int = 5,
+        timeout_in_mins: int = 1,
+    ) -> None:
+        if not self.role_policy_is_attached(
+            role_name=role_name,
+            policy_arn=policy_arn,
+            target_account_session=target_account_session,
+        ):
+            resource: IAMServiceResource = target_account_session.resource("iam")
+            role = resource.Role(role_name)
+            role.attach_policy(PolicyArn=policy_arn)
+            timeout = datetime.utcnow() + timedelta(minutes=timeout_in_mins)
+            while datetime.utcnow() < timeout:
+                time.sleep(delay)
+                if self.role_policy_is_attached(
+                    role_name=role_name,
+                    policy_arn=policy_arn,
+                    target_account_session=target_account_session,
+                ):
+                    return None
+        return None
 
-    # Adding sleep to account for IAM Role creation eventual consistency
-    eventual_consistency_sleep = 60
-    logger.info(f"Sleeping for {eventual_consistency_sleep}s to ensure Role exists")
-    time.sleep(eventual_consistency_sleep)
+    @staticmethod
+    def role_policy_is_attached(
+        role_name: str, policy_arn: str, target_account_session: Session
+    ) -> bool:
+        resource: IAMServiceResource = target_account_session.resource("iam")
+        role = resource.Role(role_name)
+        policy_iterator = role.attached_policies.all()
+        policy_arns = [policy.arn for policy in policy_iterator]
+        logger.info(policy_arns)
+        return policy_arn in policy_arns
 
-    return role_arn
+    def _ensure_role_can_be_assumed(
+        self, role_name: str, timeout_in_mins: int = 1, delay: int = 5
+    ) -> None:
+        timeout = datetime.utcnow() + timedelta(minutes=timeout_in_mins)
+        while datetime.utcnow() < timeout:
+            if self._can_assume_role(role_name=role_name):
+                return None
+            time.sleep(delay)
+        raise TimeoutError(
+            f"Could not assume role {role_name} within {timeout_in_mins} minutes"
+        )
 
+    def _can_assume_role(self, role_name: str) -> bool:
+        try:
+            self.auth.get_target_account_session(
+                account_id=self.target_account_id, role_name=role_name
+            )
+            return True
+        except ClientError as error:
+            if error.response["Error"]["Code"] == "AccessDenied":
+                return False
+            raise error
 
-def set_role_policy(
-    ct_execution_session: Session, role_name: str, policy_arn: str
-) -> None:
-    iam_resource: IAMServiceResource = ct_execution_session.resource("iam")
-    role = iam_resource.Role(name=role_name)
-    for policy in role.attached_policies.all():
-        role.detach_policy(PolicyArn=policy.arn)
-    logger.info("Attaching Role Policy")
-    role.attach_policy(
-        PolicyArn=policy_arn,
-    )
-    return None
+    def deploy_aws_aft_roles(self) -> None:
+        trust_policy = self.generate_aft_trust_policy()
+
+        aft_execution_role_name = utils.get_ssm_parameter_value(
+            session=self.auth.get_aft_management_session(),
+            param=AuthClient.SSM_PARAM_AFT_EXEC_ROLE_NAME,
+        )
+        aft_execution_role_name = aft_execution_role_name.split("/")[-1]
+
+        aft_role_names = [ProvisionRoles.SERVICE_ROLE_NAME, aft_execution_role_name]
+        for role_name in aft_role_names:
+            self._deploy_role_in_target_account(
+                role_name=role_name,
+                trust_policy=trust_policy,
+                policy_arn=self.ADMINISTRATOR_ACCESS_MANAGED_POLICY_ARN,
+            )
+            logger.info(f"Deployed {role_name} role")
+
+        for role_name in aft_role_names:
+            self._ensure_role_can_be_assumed(role_name=role_name)
+            logger.info(f"Can assume {role_name} role")
 
 
 def get_account_info(
-    payload: Dict[str, Any], session: Session, ct_management_session: Session
+    payload: Dict[str, Any], ct_management_session: Session
 ) -> AftAccountInfo:
     logger.info("Function Start - get_account_info")
 
@@ -178,7 +261,7 @@ def get_account_info(
 # From persist-metadata Lambda
 def persist_metadata(
     payload: Dict[str, Any], account_info: Dict[str, str], session: Session
-) -> Dict[str, Any]:
+) -> PutItemOutputTableTypeDef:
 
     logger.info("Function Start - persist_metadata")
 
@@ -212,33 +295,29 @@ def persist_metadata(
     return response
 
 
-AFT_EXEC_ROLE = "AWSAFTExecution"
-
-SSM_PARAMETER_PATH = "/aft/account-request/custom-fields/"
-
-
 def get_ssm_parameters_names_by_path(session: Session, path: str) -> List[str]:
 
     client = session.client("ssm")
-    response = client.get_parameters_by_path(Path=path, Recursive=True)
-    logger.debug(response)
+    paginator = client.get_paginator("get_parameters_by_path")
+    pages = paginator.paginate(Path=path, Recursive=True)
 
     parameter_names = []
-    for p in response["Parameters"]:
-        parameter_names.append(p["Name"])
+    for page in pages:
+        parameter_names.extend([param["Name"] for param in page["Parameters"]])
 
     return parameter_names
 
 
 def delete_ssm_parameters(session: Session, parameters: Sequence[str]) -> None:
-
-    if len(parameters) > 0:
+    batches = utils.yield_batches_from_list(
+        parameters, batch_size=10
+    )  # Max batch size for API
+    for batched_names in batches:
         client = session.client("ssm")
-        response = client.delete_parameters(Names=parameters)
-        logger.info(response)
+        response = client.delete_parameters(Names=batched_names)
 
 
-def create_ssm_parameters(session: Session, parameters: Dict[str, str]) -> None:
+def put_ssm_parameters(session: Session, parameters: Dict[str, str]) -> None:
 
     client = session.client("ssm")
 
@@ -246,7 +325,6 @@ def create_ssm_parameters(session: Session, parameters: Dict[str, str]) -> None:
         response = client.put_parameter(
             Name=SSM_PARAMETER_PATH + key, Value=value, Type="String", Overwrite=True
         )
-        logger.info(response)
 
 
 def tag_account(
