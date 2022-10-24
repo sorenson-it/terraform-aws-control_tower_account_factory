@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 import aft_common.aft_utils as utils
 import jsonschema
+from aft_common.organizations import OrganizationsAgent
 from boto3.session import Session
 
 CUSTOMIZATIONS_PIPELINE_PATTERN = "^\d\d\d\d\d\d\d\d\d\d\d\d-.*$"
@@ -34,7 +35,7 @@ def get_pipeline_for_account(session: Session, account: str) -> str:
         name = p["name"]
         if name.startswith(account + "-"):
             pipeline_arn = (
-                "arn:aws:codepipeline:"
+                f"arn:{utils.get_aws_partition(session)}:codepipeline:"
                 + current_region
                 + ":"
                 + current_account
@@ -201,11 +202,10 @@ def get_included_accounts(
             core_accounts = get_core_accounts(session)
             included_accounts.extend(core_accounts)
         if d["type"] == "ous":
-            ou_accounts = utils.get_account_ids_in_ous(
-                ct_mgmt_session, d["target_value"]
+            orgs_agent = OrganizationsAgent(ct_mgmt_session)
+            included_accounts.extend(
+                orgs_agent.get_account_ids_in_ous(ou_names=d["target_value"])
             )
-            if ou_accounts is not None:
-                included_accounts.extend(ou_accounts)
         if d["type"] == "tags":
             tag_accounts = utils.get_accounts_by_tags(
                 session, ct_mgmt_session, d["target_value"]
@@ -234,11 +234,10 @@ def get_excluded_accounts(
             core_accounts = get_core_accounts(session)
             excluded_accounts.extend(core_accounts)
         if d["type"] == "ous":
-            ou_accounts = utils.get_account_ids_in_ous(
-                ct_mgmt_session, d["target_value"]
+            orgs_agent = OrganizationsAgent(ct_mgmt_session)
+            excluded_accounts.extend(
+                orgs_agent.get_account_ids_in_ous(ou_names=d["target_value"])
             )
-            if ou_accounts is not None:
-                excluded_accounts.extend(ou_accounts)
         if d["type"] == "tags":
             tag_accounts = utils.get_accounts_by_tags(
                 session, ct_mgmt_session, d["target_value"]
@@ -303,19 +302,27 @@ def build_invoke_event(account_request_record: Dict[str, Any]) -> Dict[str, Any]
         "control_tower_event": {},
         "account_provisioning": {},
     }
-    invoke_event["account_provisioning"]["run_create_pipeline"] = "false"
+    invoke_event["account_provisioning"]["run_create_pipeline"] = "true"
 
     logger.info(str(invoke_event))
     return invoke_event
 
 
-def invoke_account_provisioning_sfn(
-    session: Session, sfn_name: str, event: Dict[str, Any]
-) -> None:
-    client = session.client("stepfunctions")
-    logger.info("Invoking SFN - " + sfn_name)
-    response = client.start_execution(
-        stateMachineArn=utils.build_sfn_arn(session, sfn_name),
-        input=json.dumps(event),
+def build_customization_invoke_event_for_target_account(
+    aft_management_session: Session,
+    account_metadata_table: str,
+    account_id: str,
+    account_request_table: str,
+) -> Dict[str, Any]:
+    account_metadata_record = get_account_metadata_record(
+        session=aft_management_session,
+        table_name=account_metadata_table,
+        account_id=account_id,
     )
-    logger.info(response)
+    account_request_email = account_metadata_record["email"]
+    account_request_record = get_account_request_record(
+        session=aft_management_session,
+        table_name=account_request_table,
+        email_address=account_request_email,
+    )
+    return build_invoke_event(account_request_record)
