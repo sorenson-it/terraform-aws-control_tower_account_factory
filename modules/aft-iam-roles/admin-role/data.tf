@@ -2,8 +2,4 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-
-
-data "aws_partition" "current" {
-  provider = aws.ct_management
-}
+data "aws_partition" "current" {}
