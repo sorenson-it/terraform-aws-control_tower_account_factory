@@ -21,6 +21,21 @@ def init(api_endpoint, tf_version, config_path):
     TERRAFORM_VERSION = tf_version
     LOCAL_CONFIGURATION_PATH = config_path
 
+def get_project_id(organization_name, project_name, api_token):
+    """Fetch the project ID for a given organization and project name."""
+    endpoint = "{}/organizations/{}/projects/".format(
+        TERRAFORM_API_ENDPOINT, organization_name
+    )
+    headers = __build_standard_headers(api_token)
+    tf_dist = os.environ.get("TF_DISTRIBUTION")
+    response = requests.get(endpoint, headers=headers, verify=tf_dist != "tfe")
+
+    projects = response.json().get("data", [])
+    for project in projects:
+        if project["attributes"]["name"] == project_name:
+            return project["id"]
+    return None
+
 
 def check_workspace_exists(organization_name, workspace_name, api_token):
     endpoint = "{}/organizations/{}/workspaces/{}".format(
@@ -37,8 +52,9 @@ def check_workspace_exists(organization_name, workspace_name, api_token):
     return None
 
 
-def create_workspace(organization_name, workspace_name, api_token):
+def create_workspace(organization_name, workspace_name, api_token, project_name):
     workspace_id = check_workspace_exists(organization_name, workspace_name, api_token)
+    project_id = get_project_id(organization_name, project_name, api_token)
     if workspace_id:
         return workspace_id
     else:
@@ -52,6 +68,13 @@ def create_workspace(organization_name, workspace_name, api_token):
                     "name": workspace_name,
                     "terraform-version": TERRAFORM_VERSION,
                     "auto-apply": True,
+                },
+                "relationships": {
+                    "project": {
+                        "data": {
+                            "id": project_id
+                        }
+                    }
                 },
                 "type": "workspaces",
             }
