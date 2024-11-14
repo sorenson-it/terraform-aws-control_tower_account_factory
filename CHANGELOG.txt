@@ -1,5 +1,5 @@
 11/14/2024
-
+#Changes by Guner Brisbin
 1.Added new function to ./sources/scripts/terraform_client.py to lookup a project ID based on project name
 2.Add "relationships" block to "create_workspace" function to tie all AFT workspaces to the "AFT Management" project in terraform_client
 4.Added "terraform_project_name" variable to root variables.tf file
