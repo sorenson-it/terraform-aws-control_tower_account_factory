@@ -206,7 +206,7 @@ resource "aws_ssm_parameter" "terraform_org_name" {
 }
 
 resource "aws_ssm_parameter" "terraform_project_name" {
-  name = "aft/config/terraform/project-name"
+  name = "/aft/config/terraform/project-name"
   type = "String"
   value = var.terraform_project_name
 }
