@@ -13,7 +13,7 @@ import terraform_client as terraform
 
 
 def setup_and_run_workspace(
-    organization_name, workspace_name, assume_role_arn, role_session_name, api_token
+    organization_name, workspace_name, assume_role_arn, role_session_name, api_token, project_name
 ):
 
     workspace_id = setup_workspace(

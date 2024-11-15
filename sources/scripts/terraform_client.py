@@ -51,7 +51,6 @@ def check_workspace_exists(organization_name, workspace_name, api_token):
             return data["data"]["id"]
     return None
 
-
 def create_workspace(organization_name, workspace_name, api_token, project_name):
     workspace_id = check_workspace_exists(organization_name, workspace_name, api_token)
     project_id = get_project_id(organization_name, project_name, api_token)
