@@ -322,7 +322,7 @@ variable "terraform_api_endpoint" {
 variable "terraform_project_name" {
   description = "Project name that all AFT pipelines will be associated with"
   type        = string
-  default     = "AFT Managements"
+  default     = "\"AFT Management\""
   validation {
     condition     = length(var.terraform_project_name) > 0
     error_message = "Variable var: terraform_project_name cannot be empty."
