@@ -24,10 +24,10 @@ def setup_and_run_workspace(
 
 
 def setup_workspace(
-    organization_name, workspace_name, assume_role_arn, role_session_name, api_token
+    organization_name, workspace_name, assume_role_arn, role_session_name, api_token, project_name
 ):
     workspace_id = terraform.create_workspace(
-        organization_name, workspace_name, api_token
+        organization_name, workspace_name, api_token, project_name
     )
     print(
         "Successfully created workspace {} with ID {}".format(
@@ -244,6 +244,9 @@ if __name__ == "__main__":
         "--workspace_name", type=str, help="Name of the workspace to be created"
     )
     parser.add_argument(
+        "--project_name", type=str, help="Name of the project the workspace will be associated"
+    )
+    parser.add_argument(
         "--assume_role_arn", type=str, help="IAM Role ARN to be used by the workspace"
     )
     parser.add_argument(
@@ -275,6 +278,7 @@ if __name__ == "__main__":
         setup_and_run_workspace(
             args.organization_name,
             args.workspace_name,
+            args.project_name,
             args.assume_role_arn,
             args.assume_role_session_name,
             args.api_token,

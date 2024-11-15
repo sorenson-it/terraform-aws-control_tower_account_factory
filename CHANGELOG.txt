@@ -1,0 +1,12 @@
+11/14/2024
+#Changes by Gbrisbin@sorenson.com
+1.Added new function to ./sources/scripts/terraform_client.py to lookup a project ID based on project name
+2.Add "relationships" block to "create_workspace" function to tie all AFT workspaces to the "AFT Management" project in terraform_client
+4.Added "terraform_project_name" variable to root variables.tf file
+5.Added "terraform_project_name" to ssm module call
+6.Added "terraform_project_name" to ssm module
+7.Added "terraform_project_name" to ssm module variables
+8.Added "project_name" arg to workspace_manager.py
+9.Added "project_name" to function "create_workspace" call
+10.Updated all 4 Build spec files to lookup new ssm parameter "terraform_project_name"
+11.Updated all 4 build spec files to passs in new "project_name" arg
