@@ -17,7 +17,7 @@ def setup_and_run_workspace(
 ):
 
     workspace_id = setup_workspace(
-        organization_name, workspace_name, assume_role_arn, role_session_name, api_token
+        organization_name, workspace_name, assume_role_arn, role_session_name, api_token, project_name
     )
     run_id = stage_run(workspace_id, assume_role_arn, role_session_name, api_token)
     return run_id
@@ -278,8 +278,8 @@ if __name__ == "__main__":
         setup_and_run_workspace(
             args.organization_name,
             args.workspace_name,
-            args.project_name,
             args.assume_role_arn,
             args.assume_role_session_name,
             args.api_token,
+            args.project_name,
         )
