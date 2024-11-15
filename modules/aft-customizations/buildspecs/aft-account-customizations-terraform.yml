@@ -122,7 +122,7 @@ phases:
             TF_TOKEN=$(aws ssm get-parameter --name "/aft/config/terraform/token" --with-decryption --query "Parameter.Value" --output text)
             TF_ENDPOINT=$(aws ssm get-parameter --name "/aft/config/terraform/api-endpoint" --query "Parameter.Value" --output text)
             TF_WORKSPACE_NAME=$VENDED_ACCOUNT_ID-aft-account-customizations
-            TF_PROJECT_NAME=$(aws ssm get-paramter --name "/aft/config/terraform/project-name" --query "Parameter.Value" --output text)
+            TF_PROJECT_NAME=$(aws ssm get-parameter --name "/aft/config/terraform/project-name" --query "Parameter.Value" --output text)
             TF_CONFIG_PATH="./temp_configuration_file.tar.gz"
 
             cd $DEFAULT_PATH/$CUSTOMIZATION/terraform
