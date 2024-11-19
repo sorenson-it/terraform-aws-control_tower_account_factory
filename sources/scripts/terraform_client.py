@@ -23,27 +23,30 @@ def init(api_endpoint, tf_version, config_path):
 
 def get_project_id(organization_name, project_name, api_token):
     """Fetch the project ID for a given organization and project name."""
-    endpoint = "{}/organizations/{}/projects/".format(
+    endpoint = "{}/organizations/{}/projects".format(
         TERRAFORM_API_ENDPOINT, organization_name
     )
     headers = __build_standard_headers(api_token)
     tf_dist = os.environ.get("TF_DISTRIBUTION")
     verify_ssl = tf_dist != "tfe"
+    params = {"filter[name]": project_name}
 
     try:
-        response = requests.get(endpoint, headers=headers, verify=verify_ssl)
+        response = requests.get(endpoint, headers=headers, params=params, verify=verify_ssl)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"error fetching projects: {e}")
         return None
 
     projects = response.json().get("data", [])
+
     for project in projects:
         if project["attributes"]["name"] == project_name:
             return project["id"]
-        
-    print(f"Project '{project_name}' not found")
-    return None
+
+
+    print(f"Project '{project_name}' not found, Returning AFT-Management Project as default")
+    return "prj-4qSKERnpVjgZ6XxH"
 
 
 def check_workspace_exists(organization_name, workspace_name, api_token):
@@ -63,9 +66,7 @@ def check_workspace_exists(organization_name, workspace_name, api_token):
 def create_workspace(organization_name, workspace_name, api_token, project_name):
     workspace_id = check_workspace_exists(organization_name, workspace_name, api_token)
     project_id = get_project_id(organization_name, project_name, api_token)
-    if not project_id:
-        project_id = "prj-4qSKERnpVjgZ6XxH"
-        
+
     if workspace_id:
         return workspace_id
     else:
