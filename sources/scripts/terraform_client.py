@@ -28,12 +28,21 @@ def get_project_id(organization_name, project_name, api_token):
     )
     headers = __build_standard_headers(api_token)
     tf_dist = os.environ.get("TF_DISTRIBUTION")
-    response = requests.get(endpoint, headers=headers, verify=tf_dist != "tfe")
+    verify_ssl = tf_dist != "tfe"
+
+    try:
+        response = requests.get(endpoint, headers=headers, verify=verify_ssl)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"error fetching projects: {e}")
+        return None
 
     projects = response.json().get("data", [])
     for project in projects:
         if project["attributes"]["name"] == project_name:
             return project["id"]
+        
+    print(f"Project '{project_name}' not found")
     return None
 
 
@@ -54,7 +63,9 @@ def check_workspace_exists(organization_name, workspace_name, api_token):
 def create_workspace(organization_name, workspace_name, api_token, project_name):
     workspace_id = check_workspace_exists(organization_name, workspace_name, api_token)
     project_id = get_project_id(organization_name, project_name, api_token)
-    print (project_id)
+    if not project_id:
+        project_id = "prj-4qSKERnpVjgZ6XxH"
+        
     if workspace_id:
         return workspace_id
     else:
