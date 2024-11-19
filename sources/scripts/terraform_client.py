@@ -77,7 +77,7 @@ def create_workspace(organization_name, workspace_name, api_token, project_name)
                             "id": project_id
                         }
                     }
-                },
+                }
             }
         }
         response = __post(endpoint, headers, payload)
