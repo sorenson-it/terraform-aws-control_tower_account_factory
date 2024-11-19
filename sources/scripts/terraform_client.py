@@ -54,6 +54,7 @@ def check_workspace_exists(organization_name, workspace_name, api_token):
 def create_workspace(organization_name, workspace_name, api_token, project_name):
     workspace_id = check_workspace_exists(organization_name, workspace_name, api_token)
     project_id = get_project_id(organization_name, project_name, api_token)
+    print (project_id)
     if workspace_id:
         return workspace_id
     else:
@@ -63,6 +64,7 @@ def create_workspace(organization_name, workspace_name, api_token, project_name)
         headers = __build_standard_headers(api_token)
         payload = {
             "data": {
+                "type": "workspaces",
                 "attributes": {
                     "name": workspace_name,
                     "terraform-version": TERRAFORM_VERSION,
@@ -71,11 +73,11 @@ def create_workspace(organization_name, workspace_name, api_token, project_name)
                 "relationships": {
                     "project": {
                         "data": {
+                            "type": "projects",
                             "id": project_id
                         }
                     }
-                },
-                "type": "workspaces",
+                }
             }
         }
         response = __post(endpoint, headers, payload)
