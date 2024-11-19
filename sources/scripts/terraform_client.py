@@ -64,6 +64,7 @@ def create_workspace(organization_name, workspace_name, api_token, project_name)
         headers = __build_standard_headers(api_token)
         payload = {
             "data": {
+                "type": "workspaces",
                 "attributes": {
                     "name": workspace_name,
                     "terraform-version": TERRAFORM_VERSION,
@@ -72,11 +73,11 @@ def create_workspace(organization_name, workspace_name, api_token, project_name)
                 "relationships": {
                     "project": {
                         "data": {
+                            "type": "projects",
                             "id": project_id
                         }
                     }
                 },
-                "type": "workspaces",
             }
         }
         response = __post(endpoint, headers, payload)
