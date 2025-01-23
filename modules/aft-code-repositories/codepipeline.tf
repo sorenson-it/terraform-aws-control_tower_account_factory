@@ -342,3 +342,64 @@ resource "aws_cloudwatch_event_target" "account_provisioning_customizations" {
   arn       = aws_codepipeline.codecommit_account_provisioning_customizations[0].arn
   role_arn  = aws_iam_role.cloudwatch_events_codepipeline_role[0].arn
 }
+
+resource "aws_codepipeline" "codestar_scp_build" {
+  count    = local.vcs.is_codecommit ? 0 : 1
+  name     = "ct-aft-account-request"
+  role_arn = aws_iam_role.account_request_codepipeline_role.arn
+
+  artifact_store {
+    location = var.codepipeline_s3_bucket_name
+    type     = "S3"
+
+    encryption_key {
+      id   = var.aft_key_arn
+      type = "KMS"
+    }
+  }
+
+  ##############################################################
+  # Source
+  ##############################################################
+  stage {
+    name = "Source"
+
+    action {
+      name             = "scp-build"
+      category         = "Source"
+      owner            = "AWS"
+      provider         = "CodeStarSourceConnection"
+      version          = "1"
+      output_artifacts = ["scp-build"]
+
+      configuration = {
+        ConnectionArn        = lookup({ github = local.connection_arn.github, bitbucket = local.connection_arn.bitbucket, githubenterprise = local.connection_arn.githubenterprise }, var.vcs_provider)
+        FullRepositoryId     = var.scp_build_repo_name
+        BranchName           = var.scp_build_repo_branch
+        DetectChanges        = true
+        OutputArtifactFormat = "CODE_ZIP"
+      }
+    }
+  }
+
+  ##############################################################
+  # Apply Account Request
+  ##############################################################
+  stage {
+    name = "terraform-apply"
+
+    action {
+      name             = "Apply-Terraform"
+      category         = "Build"
+      owner            = "AWS"
+      provider         = "CodeBuild"
+      input_artifacts  = ["scp-build"]
+      output_artifacts = ["scp-build-terraform"]
+      version          = "1"
+      run_order        = "2"
+      configuration = {
+        ProjectName = aws_codebuild_project.scp_build.name
+      }
+    }
+  }
+}
