@@ -8,6 +8,9 @@ data "local_file" "account_request_buildspec" {
 data "local_file" "account_provisioning_customizations_buildspec" {
   filename = "${path.module}/buildspecs/ct-aft-account-provisioning-customizations.yml"
 }
+data "local_file" "account_provisioning_scp_buildspec" {
+  filename = "${path.module}/buildspecs/ct-aft-account-provisioning-scp.yml"
+}
 
 resource "aws_codebuild_project" "account_request" {
   depends_on     = [aws_cloudwatch_log_group.account_request]
@@ -150,7 +153,7 @@ resource "aws_codebuild_project" "scp_build" {
 
   source {
     type      = "CODEPIPELINE"
-    buildspec = data.local_file.account_provisioning_customizations_buildspec.content
+    buildspec = data.local_file.account_provisioning_scp_buildspec.content
   }
 }
 
