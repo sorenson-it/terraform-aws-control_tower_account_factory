@@ -343,9 +343,9 @@ resource "aws_cloudwatch_event_target" "account_provisioning_customizations" {
   role_arn  = aws_iam_role.cloudwatch_events_codepipeline_role[0].arn
 }
 
-resource "aws_codepipeline" "codestar_scp_build" {
+resource "aws_codepipeline" "scp_build" {
   count    = local.vcs.is_codecommit ? 0 : 1
-  name     = "ct-aft-account-request"
+  name     = "ct-aft-scp-build"
   role_arn = aws_iam_role.account_request_codepipeline_role.arn
 
   artifact_store {
