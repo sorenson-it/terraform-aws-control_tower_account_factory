@@ -253,3 +253,8 @@ variable "aft_version" {
 variable "aft_metrics_reporting" {
   type = string
 }
+
+variable "aft_account_provisioning_scp_workspace_name" {
+  description = "Workspace name for Terraform SCP"
+  type        = string
+}

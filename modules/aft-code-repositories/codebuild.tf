@@ -8,6 +8,9 @@ data "local_file" "account_request_buildspec" {
 data "local_file" "account_provisioning_customizations_buildspec" {
   filename = "${path.module}/buildspecs/ct-aft-account-provisioning-customizations.yml"
 }
+data "local_file" "account_provisioning_scp_buildspec" {
+  filename = "${path.module}/buildspecs/ct-aft-account-provisioning-scp.yml"
+}
 
 resource "aws_codebuild_project" "account_request" {
   depends_on     = [aws_cloudwatch_log_group.account_request]
@@ -114,6 +117,46 @@ resource "aws_codebuild_project" "account_provisioning_customizations_pipeline" 
 
 }
 
+resource "aws_codebuild_project" "scp_build" {
+  name = "aft-account-request-scp-build"
+  description    = "Job to apply Terraform Workspace for SCPs on new account request"
+  build_timeout  = tostring(var.global_codebuild_timeout)
+  service_role   = aws_iam_role.account_request_codebuild_role.arn
+  encryption_key = var.aft_key_arn
+
+  artifacts {
+    type = "CODEPIPELINE"
+  }
+
+  environment {
+    compute_type                = "BUILD_GENERAL1_MEDIUM"
+    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
+    type                        = "LINUX_CONTAINER"
+    image_pull_credentials_type = "CODEBUILD"
+
+    environment_variable {
+      name  = "AWS_PARTITION"
+      value = data.aws_partition.current.partition
+      type  = "PLAINTEXT"
+    }
+  }
+  logs_config {
+    cloudwatch_logs {
+      group_name = aws_cloudwatch_log_group.account_provisioning_scp.name
+    }
+
+    s3_logs {
+      status   = "ENABLED"
+      location = "${var.codepipeline_s3_bucket_name}/ct-aft-account-provisioning-scp-logs"
+    }
+  }
+
+  source {
+    type      = "CODEPIPELINE"
+    buildspec = data.local_file.account_provisioning_scp_buildspec.content
+  }
+}
+
 #tfsec:ignore:aws-cloudwatch-log-group-customer-key
 resource "aws_cloudwatch_log_group" "account_request" {
   name              = "/aws/codebuild/ct-aft-account-request"
@@ -123,5 +166,10 @@ resource "aws_cloudwatch_log_group" "account_request" {
 #tfsec:ignore:aws-cloudwatch-log-group-customer-key
 resource "aws_cloudwatch_log_group" "account_provisioning_customizations" {
   name              = "/aws/codebuild/ct-aft-account-provisioning-customizations"
+  retention_in_days = var.log_group_retention
+}
+
+resource "aws_cloudwatch_log_group" "account_provisioning_scp" {
+  name              = "/aws/codebuild/ct-aft-account-provisioning-scp"
   retention_in_days = var.log_group_retention
 }

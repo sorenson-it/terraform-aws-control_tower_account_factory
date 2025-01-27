@@ -153,6 +153,12 @@ variable "aft_feature_delete_default_vpcs_enabled" {
   }
 }
 
+variable "aft_account_provisioning_scp_workspace_name" {
+  description = "Workspace name for SCP in TFE"
+  type        = string
+  default     = "terraform-aws-landing-zone-scps"
+}
+
 #########################################
 # AFT Customer VCS Variables
 #########################################
@@ -251,6 +257,26 @@ variable "account_provisioning_customizations_repo_branch" {
   validation {
     condition     = length(var.account_provisioning_customizations_repo_branch) > 0
     error_message = "Variable var: account_provisioning_customizations_repo_branch cannot be empty."
+  }
+}
+
+variable "scp_build_repo_branch" {
+  description = "Branch name for the scp files."
+  type = string 
+  default = "main"
+  validation {
+    condition     = length(var.scp_build_repo_branch) > 0
+    error_message = "Variable var: scp_build_repo_branch cannot be empty."
+  }
+}
+
+variable "scp_build_repo_name" {
+  description = "Repository name for the scp files.For non-CodeCommit repos, name should be in the format of Org/Repo"
+  type = string 
+  default = "sorenson-it/terraform-aws-landing-zone-scps"
+  validation {
+    condition     = length(var.scp_build_repo_name) > 0
+    error_message = "Variable var: scp_build_repo_name cannot be empty."
   }
 }
 
