@@ -258,5 +258,5 @@ module "aft_ssm_parameters" {
   maximum_concurrent_customizations                           = var.maximum_concurrent_customizations
   github_enterprise_url                                       = var.github_enterprise_url
   aft_metrics_reporting                                       = var.aft_metrics_reporting
-  aft_account_provisioning_scp_workspace_name                 = var.aft_account_provisioning_scp_workspace_name
+  aft_account_provisioning_scp_workspace_id                 = var.aft_account_provisioning_scp_workspace_id
 }

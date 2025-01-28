@@ -384,8 +384,8 @@ resource "aws_ssm_parameter" "aft_metrics_reporting_uuid" {
   type  = "String"
 }
 
-resource "aws_ssm_parameter" "aft_account_provisioning_scp_workspace_name" {
-  name  = "/aft/config/terraform/scp-workspace-name"
-  value = var.aft_account_provisioning_scp_workspace_name
+resource "aws_ssm_parameter" "aft_account_provisioning_scp_workspace_id" {
+  name  = "/aft/config/terraform/scp-workspace-id"
+  value = var.aft_account_provisioning_scp_workspace_id
   type  = "String"
 }

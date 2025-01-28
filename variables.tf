@@ -153,10 +153,10 @@ variable "aft_feature_delete_default_vpcs_enabled" {
   }
 }
 
-variable "aft_account_provisioning_scp_workspace_name" {
-  description = "Workspace name for SCP in TFE"
+variable "aft_account_provisioning_scp_workspace_id" {
+  description = "Workspace id for SCP in TFE"
   type        = string
-  default     = "terraform-aws-landing-zone-scps"
+  default     = "ws-bCKDyw73AtJCZKni"
 }
 
 #########################################
