@@ -15,7 +15,7 @@ phases:
         TF_ORG_NAME=$(aws ssm get-parameter --name "/aft/config/terraform/org-name" --query "Parameter.Value" --output text)
         TF_TOKEN=$(aws ssm get-parameter --name "/aft/config/terraform/token" --with-decryption --query "Parameter.Value" --output text)
         TF_ENDPOINT=$(aws ssm get-parameter --name "/aft/config/terraform/api-endpoint" --query "Parameter.Value" --output text)
-        TF_WORKSPACE_NAME=$(aws ssm get-parameter --name "/aft/config/terraform/scp-workspace-name" --query "Parameter.Value" --output text)
+        TF_WORKSPACE_NAME=$(aws ssm get-parameter --name "/aft/config/terraform/scp-workspace-id" --query "Parameter.Value" --output text)
         TF_PROJECT_NAME=$(aws ssm get-parameter --name "/aft/config/terraform/project-name" --query "Parameter.Value" --output text)
         TF_CONFIG_PATH="./temp_configuration_file.tar.gz"
 
