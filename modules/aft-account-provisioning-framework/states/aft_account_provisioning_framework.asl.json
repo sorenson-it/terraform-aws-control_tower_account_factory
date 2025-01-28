@@ -131,7 +131,7 @@
       "Default": "aft_account_provisioning_framework_notify_success"
     },
     "aft_account_provisioning_framework_create_pipeline": {
-      "Next": "aft_account_provisioning_framework_notify_success",
+      "Next": "aft_account_provisioning_scp",
       "Type": "Task",
       "Resource": "arn:${current_partition}:states:::codebuild:startBuild.sync",
       "Parameters": {
@@ -157,6 +157,14 @@
         }
       ]
     },
+    "aft_account_provisioning_scp" : {
+      "Next": "aft_account_provisioning_framework_notify_success",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::aws-sdk:codepipeline:startPipelineExecution",
+        "Parameters": {
+          "Name": "ct-aft-scp-build" 
+        }
+      },
     "aft_account_provisioning_framework_notify_success": {
       "Type": "Task",
       "Resource": "arn:${current_partition}:states:::sns:publish",
